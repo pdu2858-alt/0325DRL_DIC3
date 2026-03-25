@@ -1,3 +1,5 @@
+DEMO：https://0325drldic3-nhpzccge9hv6mjyot3vprs.streamlit.app/
+
 # 🎰 Bandit Strategies Comparison (Multi-Armed Bandits)
 
 這是一個基於 Streamlit 開發的互動式應用程式，旨在模擬並比較六種常見的多臂老虎機（Multi-Armed Bandit, MAB）策略。透過此工具，使用者可以直觀地觀察不同演算法在累積遺憾（Cumulative Regret）與總獎勵上的表現差異。
