@@ -6,12 +6,12 @@ import matplotlib.pyplot as plt
 # 設定 Streamlit 頁面
 st.set_page_config(page_title="Bandit Strategies Comparison", layout="wide")
 
-st.title("🎰 A/B Testing vs. Multi-Armed Bandits")
+st.title("🎰 A/B Testing vs. Multi-Armed Bandits (6 Strategies)")
 st.markdown("""
 ### 🧩 Problem Setup
-* **Total budget:** $10,000 (10,000 rounds)
+* **Total budget:** 10,000 (10,000 rounds)
 * **Bandits True Expected Returns:** Arm A: **0.8**, Arm B: **0.7**, Arm C: **0.5**
-* **A/B Test Rule:** First $2,000 split equally between A and B (Ignore C). Remaining $8,000 goes to the winner.
+* **A/B Test Rule:** First 2,000 budget split equally between A and B (Ignore C). Remaining 8,000 goes to the winner.
 """)
 
 st.divider()
@@ -26,9 +26,9 @@ col1, col2 = st.columns(2)
 with col1:
     st.subheader("Task 1: A/B Test Phase (Exploration)")
     st.markdown("""
-    We allocate $1,000 to Arm A and $1,000 to Arm B.
-    * Expected Reward from A = $1000 \\times 0.8 = 800$
-    * Expected Reward from B = $1000 \\times 0.7 = 700$
+    We allocate 1,000 to Arm A and 1,000 to Arm B.
+    * Expected Reward from A = 1000 * 0.8 = 800
+    * Expected Reward from B = 1000 * 0.7 = 700
     * **Total Expected Exploration Reward = 1,500**
     """)
     
@@ -40,23 +40,23 @@ with col1:
     
     st.subheader("Task 3: Exploitation Phase & Total Reward")
     st.markdown("""
-    The remaining $8,000 is allocated entirely to Arm A.
-    * Expected Exploitation Reward = $8000 \\times 0.8 = 6400$
+    The remaining 8,000 is allocated entirely to Arm A.
+    * Expected Exploitation Reward = 8000 * 0.8 = 6400
     * **Total Expected Reward = 1500 (Exploration) + 6400 (Exploitation) = 7,900**
     """)
 
 with col2:
     st.subheader("Task 4: Optimal Strategy Comparison")
     st.markdown("""
-    The optimal strategy is to know the best arm from the start and allocate all $10,000 to Arm A.
-    * **Optimal Expected Reward = $10000 \\times 0.8 = 8,000**
+    The optimal strategy is to know the best arm from the start and allocate all 10,000 to Arm A.
+    * **Optimal Expected Reward = 10000 * 0.8 = 8,000**
     """)
     
     st.subheader("Task 5: Regret of A/B Testing")
     st.markdown("""
     Regret is the difference between the Optimal Reward and the Total Expected Reward of our strategy.
-    * **Regret** = $8000 - 7900 =$ **100**
-    *(Note: The $100 regret comes entirely from pulling Arm B 1,000 times during exploration, losing 0.1 per pull).*
+    * **Regret** = 8000 - 7900 = **100**
+    *(Note: The 100 regret comes entirely from pulling Arm B 1,000 times during exploration, losing 0.1 per pull).*
     """)
 
 st.divider()
@@ -66,16 +66,16 @@ st.divider()
 # ==========================================
 st.header("🧠 Task 6: How MAB Outperforms A/B Testing")
 st.markdown("""
-**A/B testing is static.** It rigidly forces you to spend $1,000 on Arm B even if it becomes obvious after 100 pulls that Arm A is better. 
+**A/B testing is static.** It rigidly forces you to spend 1,000 on Arm B even if it becomes obvious early on that Arm A is better. 
 
-**Bandit Algorithms (ε-greedy, UCB, Thompson Sampling) are adaptive:**
+**Bandit Algorithms (ε-Greedy, UCB, Thompson Sampling, etc.) are adaptive:**
 * **Dynamic Resource Allocation:** They update their confidence after *every single pull*. 
 * **Minimizing Waste:** As soon as Arm A starts looking like the winner, they shift more budget to Arm A *during* the exploration phase.
-* **Result:** They don't waste 1,000 full pulls on a suboptimal arm, resulting in a **lower cumulative regret** (closer to 20~40 instead of 100).
+* **Result:** They don't waste 1,000 full pulls on a suboptimal arm, resulting in a **lower cumulative regret**.
 """)
 
 # ==========================================
-# 模擬演算法 (Simulation Functions) - 保留用作視覺證明
+# 模擬演算法 (Simulation Functions) - 包含 6 種策略
 # ==========================================
 BUDGET = 10000
 TRUE_MEANS = [0.8, 0.7, 0.5]
@@ -93,6 +93,18 @@ def simulate_ab_test():
     rewards[2000:] = np.random.binomial(1, TRUE_MEANS[best_arm], BUDGET - 2000)
     return rewards
 
+def simulate_optimistic_initial_values():
+    Q = np.array([5.0, 5.0, 5.0]) # 樂觀的初始值
+    N = np.zeros(3)
+    rewards = np.zeros(BUDGET)
+    for t in range(BUDGET):
+        action = np.argmax(Q)
+        reward = np.random.binomial(1, TRUE_MEANS[action])
+        rewards[t] = reward
+        N[action] += 1
+        Q[action] = Q[action] + (1/N[action]) * (reward - Q[action])
+    return rewards
+
 def simulate_epsilon_greedy(epsilon=0.1):
     Q = np.zeros(3)
     N = np.zeros(3)
@@ -102,6 +114,21 @@ def simulate_epsilon_greedy(epsilon=0.1):
             action = np.random.choice(3)
         else:
             action = np.argmax(Q)
+        reward = np.random.binomial(1, TRUE_MEANS[action])
+        rewards[t] = reward
+        N[action] += 1
+        Q[action] = Q[action] + (1/N[action]) * (reward - Q[action])
+    return rewards
+
+def simulate_softmax(tau=0.1):
+    Q = np.zeros(3)
+    N = np.zeros(3)
+    rewards = np.zeros(BUDGET)
+    for t in range(BUDGET):
+        # 避免溢位 (Prevent overflow)
+        exp_Q = np.exp((Q - np.max(Q)) / tau) 
+        probs = exp_Q / np.sum(exp_Q)
+        action = np.random.choice(3, p=probs)
         reward = np.random.binomial(1, TRUE_MEANS[action])
         rewards[t] = reward
         N[action] += 1
@@ -148,18 +175,22 @@ def simulate_thompson_sampling():
 st.sidebar.header("Simulation Settings")
 runs = st.sidebar.slider("Number of Simulations to Average", min_value=1, max_value=50, value=10)
 
-if st.button("Run Simulation to Prove MAB Superiority"):
-    with st.spinner('Simulating rounds...'):
+if st.button("Run Simulation (6 Strategies)"):
+    with st.spinner('Simulating 10,000 rounds for all 6 algorithms...'):
         results = {
             "A/B Testing": np.zeros(BUDGET),
+            "Optimistic Init": np.zeros(BUDGET),
             "ε-Greedy (ε=0.1)": np.zeros(BUDGET),
+            "Softmax (τ=0.1)": np.zeros(BUDGET),
             "UCB (c=2)": np.zeros(BUDGET),
             "Thompson Sampling": np.zeros(BUDGET)
         }
         
         for _ in range(runs):
             results["A/B Testing"] += simulate_ab_test()
+            results["Optimistic Init"] += simulate_optimistic_initial_values()
             results["ε-Greedy (ε=0.1)"] += simulate_epsilon_greedy()
+            results["Softmax (τ=0.1)"] += simulate_softmax()
             results["UCB (c=2)"] += simulate_ucb()
             results["Thompson Sampling"] += simulate_thompson_sampling()
             
@@ -173,9 +204,9 @@ if st.button("Run Simulation to Prove MAB Superiority"):
             cumulative_reward = np.cumsum(results[key])
             regret_results[key] = optimal_cumulative_reward - cumulative_reward
             
-        st.subheader("📊 Visual Proof: Cumulative Regret Comparison")
+        st.subheader("📊 Visual Proof: Cumulative Regret Comparison (6 Methods)")
         
-        fig, ax = plt.subplots(figsize=(10, 5))
+        fig, ax = plt.subplots(figsize=(12, 6))
         for key, regret in regret_results.items():
             ax.plot(regret, label=key, linewidth=1.5)
             
