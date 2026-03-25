@@ -75,109 +75,113 @@ st.markdown("""
 """)
 
 # ==========================================
-# 模擬演算法 (Simulation Functions) - 包含 6 種策略
+# 模擬演算法 (Simulation Functions) - 回傳 Actions 以計算平滑的 Expected Regret
 # ==========================================
 BUDGET = 10000
-TRUE_MEANS = [0.8, 0.7, 0.5]
+TRUE_MEANS = np.array([0.8, 0.7, 0.5])
 OPTIMAL_MEAN = max(TRUE_MEANS)
 
 def simulate_ab_test():
-    rewards = np.zeros(BUDGET)
+    actions = np.zeros(BUDGET, dtype=int)
+    # Exploration
     pulls_A = np.random.binomial(1, TRUE_MEANS[0], 1000)
     pulls_B = np.random.binomial(1, TRUE_MEANS[1], 1000)
-    rewards[0:1000] = pulls_A
-    rewards[1000:2000] = pulls_B
+    actions[0:1000] = 0
+    actions[1000:2000] = 1
+    
     mean_A = np.mean(pulls_A)
     mean_B = np.mean(pulls_B)
+    # Exploitation
     best_arm = 0 if mean_A >= mean_B else 1
-    rewards[2000:] = np.random.binomial(1, TRUE_MEANS[best_arm], BUDGET - 2000)
-    return rewards
+    actions[2000:] = best_arm
+    return actions
 
 def simulate_optimistic_initial_values():
-    Q = np.array([5.0, 5.0, 5.0]) # 樂觀的初始值
+    Q = np.array([5.0, 5.0, 5.0]) 
     N = np.zeros(3)
-    rewards = np.zeros(BUDGET)
+    actions = np.zeros(BUDGET, dtype=int)
     for t in range(BUDGET):
         action = np.argmax(Q)
         reward = np.random.binomial(1, TRUE_MEANS[action])
-        rewards[t] = reward
+        actions[t] = action
         N[action] += 1
         Q[action] = Q[action] + (1/N[action]) * (reward - Q[action])
-    return rewards
+    return actions
 
 def simulate_epsilon_greedy(epsilon=0.1):
     Q = np.zeros(3)
     N = np.zeros(3)
-    rewards = np.zeros(BUDGET)
+    actions = np.zeros(BUDGET, dtype=int)
     for t in range(BUDGET):
         if np.random.rand() < epsilon:
             action = np.random.choice(3)
         else:
             action = np.argmax(Q)
         reward = np.random.binomial(1, TRUE_MEANS[action])
-        rewards[t] = reward
+        actions[t] = action
         N[action] += 1
         Q[action] = Q[action] + (1/N[action]) * (reward - Q[action])
-    return rewards
+    return actions
 
 def simulate_softmax(tau=0.1):
     Q = np.zeros(3)
     N = np.zeros(3)
-    rewards = np.zeros(BUDGET)
+    actions = np.zeros(BUDGET, dtype=int)
     for t in range(BUDGET):
-        # 避免溢位 (Prevent overflow)
         exp_Q = np.exp((Q - np.max(Q)) / tau) 
         probs = exp_Q / np.sum(exp_Q)
         action = np.random.choice(3, p=probs)
         reward = np.random.binomial(1, TRUE_MEANS[action])
-        rewards[t] = reward
+        actions[t] = action
         N[action] += 1
         Q[action] = Q[action] + (1/N[action]) * (reward - Q[action])
-    return rewards
+    return actions
 
 def simulate_ucb(c=2.0):
     Q = np.zeros(3)
     N = np.zeros(3)
-    rewards = np.zeros(BUDGET)
+    actions = np.zeros(BUDGET, dtype=int)
     for t in range(3):
         action = t
         reward = np.random.binomial(1, TRUE_MEANS[action])
-        rewards[t] = reward
+        actions[t] = action
         N[action] += 1
         Q[action] = reward
     for t in range(3, BUDGET):
         ucb_values = Q + c * np.sqrt(np.log(t) / N)
         action = np.argmax(ucb_values)
         reward = np.random.binomial(1, TRUE_MEANS[action])
-        rewards[t] = reward
+        actions[t] = action
         N[action] += 1
         Q[action] = Q[action] + (1/N[action]) * (reward - Q[action])
-    return rewards
+    return actions
 
 def simulate_thompson_sampling():
     alpha = np.ones(3)
     beta = np.ones(3)
-    rewards = np.zeros(BUDGET)
+    actions = np.zeros(BUDGET, dtype=int)
     for t in range(BUDGET):
         sampled_theta = np.random.beta(alpha, beta)
         action = np.argmax(sampled_theta)
         reward = np.random.binomial(1, TRUE_MEANS[action])
-        rewards[t] = reward
+        actions[t] = action
         if reward == 1:
             alpha[action] += 1
         else:
             beta[action] += 1
-    return rewards
+    return actions
 
 # ==========================================
 # 執行模擬與繪圖 (Visual Proof)
 # ==========================================
 st.sidebar.header("Simulation Settings")
-runs = st.sidebar.slider("Number of Simulations to Average", min_value=1, max_value=50, value=10)
+runs = st.sidebar.slider("Number of Simulations to Average", min_value=1, max_value=100, value=20)
 
 if st.button("Run Simulation (6 Strategies)"):
-    with st.spinner('Simulating 10,000 rounds for all 6 algorithms...'):
-        results = {
+    with st.spinner(f'Simulating {BUDGET} rounds for all 6 algorithms over {runs} runs...'):
+        
+        # 儲存每種策略在每一輪的「預期遺憾」總和
+        expected_regret_sums = {
             "A/B Testing": np.zeros(BUDGET),
             "Optimistic Init": np.zeros(BUDGET),
             "ε-Greedy (ε=0.1)": np.zeros(BUDGET),
@@ -187,33 +191,44 @@ if st.button("Run Simulation (6 Strategies)"):
         }
         
         for _ in range(runs):
-            results["A/B Testing"] += simulate_ab_test()
-            results["Optimistic Init"] += simulate_optimistic_initial_values()
-            results["ε-Greedy (ε=0.1)"] += simulate_epsilon_greedy()
-            results["Softmax (τ=0.1)"] += simulate_softmax()
-            results["UCB (c=2)"] += simulate_ucb()
-            results["Thompson Sampling"] += simulate_thompson_sampling()
+            # 取得每種策略選擇的 actions
+            actions_dict = {
+                "A/B Testing": simulate_ab_test(),
+                "Optimistic Init": simulate_optimistic_initial_values(),
+                "ε-Greedy (ε=0.1)": simulate_epsilon_greedy(),
+                "Softmax (τ=0.1)": simulate_softmax(),
+                "UCB (c=2)": simulate_ucb(),
+                "Thompson Sampling": simulate_thompson_sampling()
+            }
             
-        for key in results:
-            results[key] /= runs
-
-        optimal_cumulative_reward = np.cumsum(np.full(BUDGET, OPTIMAL_MEAN))
-        
-        regret_results = {}
-        for key in results:
-            cumulative_reward = np.cumsum(results[key])
-            regret_results[key] = optimal_cumulative_reward - cumulative_reward
-            
-        st.subheader("📊 Visual Proof: Cumulative Regret Comparison (6 Methods)")
+            # 計算並累加「預期遺憾」
+            for key, actions in actions_dict.items():
+                # 該輪的遺憾 = 最優臂的期望值 - 選擇臂的期望值
+                round_regrets = OPTIMAL_MEAN - TRUE_MEANS[actions]
+                expected_regret_sums[key] += round_regrets
+                
+        st.subheader("📊 Visual Proof: Cumulative Expected Regret Comparison")
         
         fig, ax = plt.subplots(figsize=(12, 6))
-        for key, regret in regret_results.items():
-            ax.plot(regret, label=key, linewidth=1.5)
+        
+        # 繪製平均累積預期遺憾
+        for key, regret_sum in expected_regret_sums.items():
+            avg_round_regret = regret_sum / runs
+            cumulative_expected_regret = np.cumsum(avg_round_regret)
+            
+            # 為了避免 log(0) 的問題（在第0輪如果選對了，遺憾是0），將0替換為極小值
+            cumulative_expected_regret = np.where(cumulative_expected_regret == 0, 1e-10, cumulative_expected_regret)
+            
+            ax.plot(cumulative_expected_regret, label=key, linewidth=1.5)
             
         ax.set_title(f"Simulated Bandit Performance (Averaged over {runs} runs)")
         ax.set_xlabel("Round Index (Budget)")
         ax.set_ylabel("Cumulative Expected Regret")
         ax.set_yscale('log')
+        
+        # 設定 y 軸範圍，讓圖表更好看 (例如 0.1 到 1000)
+        ax.set_ylim(bottom=0.1) 
+        
         ax.legend()
         ax.grid(True, which="both", ls="--", alpha=0.5)
         st.pyplot(fig)
